@@ -2,6 +2,7 @@ node_modules/
 dist/
 data/uploads/
 .venv/
+training-examples/
 .env
 .DS_Store
 Thumbs.db
