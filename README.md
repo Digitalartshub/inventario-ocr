@@ -64,3 +64,20 @@ Para uso real em qualquer telemovel pela internet, o ideal e publicar a app com:
 A app tambem funciona em GitHub Pages para consulta: nesse modo ela usa `public/inventory.json`, que ja contem os dados convertidos.
 
 GitHub Pages nao consegue guardar novos Excels enviados no browser. Para os colegas carregarem muitos Excels diretamente pela app, e preciso publicar a versao com servidor Node (`server.js`) num alojamento com armazenamento persistente.
+
+## OCR com Kraken
+
+Kraken foi instalado localmente num ambiente Python `.venv`. Para repetir a instalacao:
+
+```bash
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements-ocr.txt
+```
+
+No Windows, usa o wrapper abaixo para forcar UTF-8:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\kraken.ps1 --version
+```
+
+O Kraken precisa de um modelo `.mlmodel` para reconhecer texto. O proximo passo e escolher um modelo base ou treinar um modelo com exemplos reais dos codigos manuscritos do museu.
