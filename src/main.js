@@ -47,11 +47,12 @@ function normalize(value) {
 }
 
 function compactCode(value) {
-  return normalize(value)
-    .replace(/[._/-]/g, "")
-    .replace(/[5$]/g, "S")
-    .replace(/8/g, "B")
-    .replace(/6/g, "G")
+  const compact = normalize(value).replace(/[._/-]/g, "");
+
+  return compact
+    .replace(/M8/g, "MB")
+    .replace(/CMB5C/g, "CMBSC")
+    .replace(/([A-Z])5([A-Z])/g, "$1S$2")
     .replace(/O/g, "0");
 }
 
