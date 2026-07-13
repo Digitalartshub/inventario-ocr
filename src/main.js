@@ -5,6 +5,8 @@ const state = {
   rows: [],
   selectedColumn: "",
   serverMode: false,
+  lastRead: "",
+  lastSuggestions: [],
 };
 
 const els = {
@@ -42,12 +44,35 @@ function compactCode(value) {
   return normalize(value)
     .replace(/[._/-]/g, "")
     .replace(/[5$]/g, "S")
-    .replace(/€/g, "C")
+    .replace(/8/g, "B")
+    .replace(/6/g, "G")
     .replace(/O/g, "0");
 }
 
+function correctionKey(value) {
+  return `ocr-correction:${compactCode(value)}`;
+}
+
+function getStoredCorrection(value) {
+  try {
+    return localStorage.getItem(correctionKey(value)) || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function storeCorrection(readValue, correctValue) {
+  if (!readValue || !correctValue) return;
+
+  try {
+    localStorage.setItem(correctionKey(readValue), correctValue);
+  } catch (error) {
+    console.warn("Nao foi possivel guardar correcao local.", error);
+  }
+}
+
 function likelyInventoryColumn(headers) {
-  const preferred = ["inventario", "inventario", "inventory", "numero", "numero", "num", "codigo", "codigo", "id"];
+  const preferred = ["inventario", "inventory", "numero", "num", "codigo", "id"];
   const found = headers.find((header) => {
     const normalized = String(header).toLowerCase();
     return preferred.some((term) => normalized.includes(term));
@@ -116,6 +141,8 @@ async function runOcr(source) {
 
       const candidate = chooseBestInventoryText(result.data.text);
       best = candidate.value;
+      state.lastRead = candidate.read || best;
+      state.lastSuggestions = candidate.suggestions || [];
       if (candidate.fromDatabase) break;
     }
 
@@ -137,8 +164,8 @@ async function runOcr(source) {
 async function prepareOcrImages(source) {
   const base = await sourceToCanvas(source);
   const crops = [
-    { x: 0.08, y: 0.38, width: 0.84, height: 0.24 },
-    { x: 0.05, y: 0.32, width: 0.9, height: 0.34 },
+    { x: 0.07, y: 0.36, width: 0.86, height: 0.28 },
+    { x: 0.03, y: 0.30, width: 0.94, height: 0.40 },
   ];
 
   return crops.map((crop) => preprocessCrop(base, crop));
@@ -176,7 +203,7 @@ function preprocessCrop(baseCanvas, crop) {
     const green = image.data[index + 1];
     const blue = image.data[index + 2];
     const gray = red * 0.299 + green * 0.587 + blue * 0.114;
-    const contrasted = gray < 165 ? 0 : 255;
+    const contrasted = gray < 178 ? 0 : 255;
     image.data[index] = contrasted;
     image.data[index + 1] = contrasted;
     image.data[index + 2] = contrasted;
@@ -194,20 +221,26 @@ function chooseBestInventoryText(text) {
 
   const joined = normalize(text);
   const candidates = [...new Set([...rawCandidates, joined])];
-  const suggestions = findInventorySuggestions(candidates);
+  const read = candidates.sort((a, b) => b.length - a.length)[0] ?? "";
+  const storedCorrection = getStoredCorrection(read);
+  const suggestions = findInventorySuggestions(candidates, 10);
   const best = suggestions[0];
 
-  if (best && (best.score >= 0.62 || (best.score >= 0.54 && candidates.some((candidate) => /\d/.test(candidate))))) {
-    return { value: best.value, fromDatabase: true, suggestions };
+  if (storedCorrection) {
+    return { value: storedCorrection, fromDatabase: true, suggestions, read };
   }
 
-  return { value: candidates.sort((a, b) => b.length - a.length)[0] ?? "", fromDatabase: false, suggestions };
+  if (best && (best.score >= 0.62 || (best.score >= 0.52 && candidates.some((candidate) => /\d/.test(candidate))))) {
+    return { value: best.value, fromDatabase: true, suggestions, read };
+  }
+
+  return { value: read, fromDatabase: false, suggestions, read };
 }
 
-function findInventorySuggestions(candidates, limit = 5) {
+function findInventorySuggestions(candidates, limit = 10) {
   if (!state.rows.length || !state.selectedColumn) return [];
 
-  const candidateValues = candidates.map(compactCode).filter((value) => value.length >= 3);
+  const candidateValues = candidates.map(compactCode).filter((value) => value.length >= 2);
   if (!candidateValues.length) return [];
 
   const byValue = new Map();
@@ -229,7 +262,7 @@ function findInventorySuggestions(candidates, limit = 5) {
   }
 
   return [...byValue.values()]
-    .filter((suggestion) => suggestion.score >= 0.42)
+    .filter((suggestion) => suggestion.score >= 0.34)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 }
@@ -242,11 +275,14 @@ function similarityScore(candidate, inventory) {
   const distance = levenshtein(candidate, inventory);
   const maxLength = Math.max(candidate.length, inventory.length);
   const base = maxLength ? 1 - distance / maxLength : 0;
-
   const shared = [...candidate].filter((char) => inventory.includes(char)).length / Math.max(candidate.length, 1);
   const candidateNumbers = candidate.match(/\d+/g) ?? [];
   const numericBonus = candidateNumbers.some((number) => inventory.includes(number)) ? 0.12 : 0;
-  return Math.min(1, base * 0.72 + shared * 0.2 + numericBonus);
+  const prefixBonus = candidateNumbers[0] && inventory.startsWith(candidateNumbers[0]) ? 0.12 : 0;
+  const suffixBonus = candidate.endsWith("CMBSC") && inventory.endsWith("CMBSC") ? 0.16 : 0;
+  const containsBonus = candidate.length >= 3 && inventory.includes(candidate.slice(0, 3)) ? 0.06 : 0;
+
+  return Math.min(1, base * 0.68 + shared * 0.18 + numericBonus + prefixBonus + suffixBonus + containsBonus);
 }
 
 function levenshtein(a, b) {
@@ -393,7 +429,7 @@ async function searchInventory() {
     return;
   }
 
-  renderMatch(result.row, result.excelRowNumber, query);
+  renderMatch(result.row, result.excelRowNumber, query, state.lastSuggestions);
   setStatus("Encontrado");
 }
 
@@ -403,7 +439,7 @@ function renderSuggestions(query, suggestions) {
   const buttons = suggestions
     .map((suggestion) => {
       const label = suggestion.value;
-      const detail = suggestion.row?.Identificação || suggestion.row?.Folha || "";
+      const detail = getRowDetail(suggestion.row);
       return `
         <button class="suggestion-button" type="button" data-inventory="${escapeHtml(label)}">
           <strong>${escapeHtml(label)}</strong>
@@ -420,6 +456,12 @@ function renderSuggestions(query, suggestions) {
       <div class="suggestion-list">${buttons}</div>
     </div>
   `;
+}
+
+function getRowDetail(row) {
+  if (!row) return "";
+  const identificationKey = Object.keys(row).find((key) => key.toLowerCase().includes("identifica"));
+  return row[identificationKey] || row.Folha || "";
 }
 
 async function searchOnServer(query) {
@@ -442,7 +484,7 @@ function searchLocally(query) {
   };
 }
 
-function renderMatch(row, excelRowNumber, query) {
+function renderMatch(row, excelRowNumber, query, suggestions = []) {
   const cells = state.headers
     .map((header) => {
       const value = row[header] === "" ? "-" : row[header];
@@ -464,6 +506,7 @@ function renderMatch(row, excelRowNumber, query) {
       <div class="match-badge">${escapeHtml(query)}</div>
     </div>
     <div class="result-grid">${cells}</div>
+    ${renderSuggestions(query, suggestions.filter((suggestion) => suggestion.value !== query).slice(0, 6))}
   `;
 }
 
@@ -527,6 +570,7 @@ els.results.addEventListener("click", (event) => {
   const button = event.target.closest("[data-inventory]");
   if (!button) return;
 
+  storeCorrection(state.lastRead || els.inventoryInput.value, button.dataset.inventory);
   els.inventoryInput.value = button.dataset.inventory;
   searchInventory();
 });
