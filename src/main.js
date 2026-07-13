@@ -38,6 +38,14 @@ function normalize(value) {
     .replace(/[^A-Z0-9._/-]/g, "");
 }
 
+function compactCode(value) {
+  return normalize(value)
+    .replace(/[._/-]/g, "")
+    .replace(/[5$]/g, "S")
+    .replace(/€/g, "C")
+    .replace(/O/g, "0");
+}
+
 function likelyInventoryColumn(headers) {
   const preferred = ["inventario", "inventario", "inventory", "numero", "numero", "num", "codigo", "codigo", "id"];
   const found = headers.find((header) => {
@@ -90,22 +98,25 @@ async function runOcr(source) {
   els.progressLabel.textContent = "A preparar OCR...";
 
   try {
-    const result = await Tesseract.recognize(source, "eng", {
+    const preparedImages = await prepareOcrImages(source);
+    const texts = [];
+
+    for (let index = 0; index < preparedImages.length; index += 1) {
+      const result = await Tesseract.recognize(preparedImages[index], "eng", {
       tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_/.",
       logger: (message) => {
         if (message.status !== "recognizing text") return;
-        const percent = Math.round((message.progress || 0) * 100);
+        const imageWeight = index / preparedImages.length;
+        const percent = Math.round((imageWeight + (message.progress || 0) / preparedImages.length) * 100);
         els.progressBar.style.width = `${percent}%`;
         els.progressLabel.textContent = `A reconhecer texto... ${percent}%`;
       },
     });
 
-    const candidates = result.data.text
-      .split(/\s+/)
-      .map(normalize)
-      .filter((value) => value.length >= 2);
+      texts.push(result.data.text);
+    }
 
-    const best = candidates.sort((a, b) => b.length - a.length)[0] ?? "";
+    const best = chooseBestInventoryText(texts.join(" "));
     els.inventoryInput.value = best;
     setStatus(best ? "Texto reconhecido" : "Sem leitura");
 
@@ -119,6 +130,124 @@ async function runOcr(source) {
   } finally {
     els.ocrProgress.hidden = true;
   }
+}
+
+async function prepareOcrImages(source) {
+  const base = await sourceToCanvas(source);
+  const crops = [
+    { x: 0, y: 0, width: 1, height: 1 },
+    { x: 0.05, y: 0.32, width: 0.9, height: 0.34 },
+    { x: 0.08, y: 0.38, width: 0.84, height: 0.24 },
+  ];
+
+  return crops.map((crop) => preprocessCrop(base, crop));
+}
+
+function sourceToCanvas(source) {
+  if (source instanceof HTMLCanvasElement) return Promise.resolve(source);
+
+  return new Promise((resolve) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = source.naturalWidth || source.videoWidth || source.width;
+    canvas.height = source.naturalHeight || source.videoHeight || source.height;
+    canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+    resolve(canvas);
+  });
+}
+
+function preprocessCrop(baseCanvas, crop) {
+  const sourceX = Math.round(baseCanvas.width * crop.x);
+  const sourceY = Math.round(baseCanvas.height * crop.y);
+  const sourceWidth = Math.round(baseCanvas.width * crop.width);
+  const sourceHeight = Math.round(baseCanvas.height * crop.height);
+  const scale = 3;
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceWidth * scale;
+  canvas.height = sourceHeight * scale;
+
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.imageSmoothingEnabled = true;
+  context.drawImage(baseCanvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
+
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  for (let index = 0; index < image.data.length; index += 4) {
+    const red = image.data[index];
+    const green = image.data[index + 1];
+    const blue = image.data[index + 2];
+    const gray = red * 0.299 + green * 0.587 + blue * 0.114;
+    const contrasted = gray < 165 ? 0 : 255;
+    image.data[index] = contrasted;
+    image.data[index + 1] = contrasted;
+    image.data[index + 2] = contrasted;
+  }
+  context.putImageData(image, 0, 0);
+
+  return canvas;
+}
+
+function chooseBestInventoryText(text) {
+  const rawCandidates = text
+    .split(/[\s\n\r]+/)
+    .map(normalize)
+    .filter((value) => value.length >= 2);
+
+  const joined = normalize(text);
+  const candidates = [...new Set([...rawCandidates, joined])];
+  const databaseMatch = findClosestInventory(candidates);
+  if (databaseMatch) return databaseMatch;
+
+  return candidates.sort((a, b) => b.length - a.length)[0] ?? "";
+}
+
+function findClosestInventory(candidates) {
+  if (!state.rows.length || !state.selectedColumn) return "";
+
+  const candidateValues = candidates.map(compactCode).filter((value) => value.length >= 3);
+  if (!candidateValues.length) return "";
+
+  let best = { score: 0, value: "" };
+  for (const row of state.rows) {
+    const inventory = normalize(row[state.selectedColumn]);
+    const inventoryCompact = compactCode(inventory);
+    if (!inventoryCompact) continue;
+
+    for (const candidate of candidateValues) {
+      const score = similarityScore(candidate, inventoryCompact);
+      if (score > best.score) {
+        best = { score, value: inventory };
+      }
+    }
+  }
+
+  return best.score >= 0.58 ? best.value : "";
+}
+
+function similarityScore(candidate, inventory) {
+  if (candidate === inventory) return 1;
+  if (candidate.length >= 4 && inventory.includes(candidate)) return 0.86;
+  if (candidate.length >= 5 && candidate.includes(inventory)) return 0.86;
+
+  const distance = levenshtein(candidate, inventory);
+  const maxLength = Math.max(candidate.length, inventory.length);
+  const base = maxLength ? 1 - distance / maxLength : 0;
+
+  const shared = [...candidate].filter((char) => inventory.includes(char)).length / Math.max(candidate.length, 1);
+  return base * 0.75 + shared * 0.25;
+}
+
+function levenshtein(a, b) {
+  const dp = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i += 1) dp[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) dp[0][j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+
+  return dp[a.length][b.length];
 }
 
 function loadImageFile(file) {
