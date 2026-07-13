@@ -99,24 +99,26 @@ async function runOcr(source) {
 
   try {
     const preparedImages = await prepareOcrImages(source);
-    const texts = [];
+    let best = "";
 
     for (let index = 0; index < preparedImages.length; index += 1) {
       const result = await Tesseract.recognize(preparedImages[index], "eng", {
-      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_/.",
-      logger: (message) => {
-        if (message.status !== "recognizing text") return;
-        const imageWeight = index / preparedImages.length;
-        const percent = Math.round((imageWeight + (message.progress || 0) / preparedImages.length) * 100);
-        els.progressBar.style.width = `${percent}%`;
-        els.progressLabel.textContent = `A reconhecer texto... ${percent}%`;
-      },
-    });
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_/.",
+        tessedit_pageseg_mode: "7",
+        logger: (message) => {
+          if (message.status !== "recognizing text") return;
+          const imageWeight = index / preparedImages.length;
+          const percent = Math.round((imageWeight + (message.progress || 0) / preparedImages.length) * 100);
+          els.progressBar.style.width = `${percent}%`;
+          els.progressLabel.textContent = `A reconhecer texto... ${percent}%`;
+        },
+      });
 
-      texts.push(result.data.text);
+      const candidate = chooseBestInventoryText(result.data.text);
+      best = candidate.value;
+      if (candidate.fromDatabase) break;
     }
 
-    const best = chooseBestInventoryText(texts.join(" "));
     els.inventoryInput.value = best;
     setStatus(best ? "Texto reconhecido" : "Sem leitura");
 
@@ -135,9 +137,8 @@ async function runOcr(source) {
 async function prepareOcrImages(source) {
   const base = await sourceToCanvas(source);
   const crops = [
-    { x: 0, y: 0, width: 1, height: 1 },
-    { x: 0.05, y: 0.32, width: 0.9, height: 0.34 },
     { x: 0.08, y: 0.38, width: 0.84, height: 0.24 },
+    { x: 0.05, y: 0.32, width: 0.9, height: 0.34 },
   ];
 
   return crops.map((crop) => preprocessCrop(base, crop));
@@ -194,9 +195,9 @@ function chooseBestInventoryText(text) {
   const joined = normalize(text);
   const candidates = [...new Set([...rawCandidates, joined])];
   const databaseMatch = findClosestInventory(candidates);
-  if (databaseMatch) return databaseMatch;
+  if (databaseMatch) return { value: databaseMatch, fromDatabase: true };
 
-  return candidates.sort((a, b) => b.length - a.length)[0] ?? "";
+  return { value: candidates.sort((a, b) => b.length - a.length)[0] ?? "", fromDatabase: false };
 }
 
 function findClosestInventory(candidates) {
