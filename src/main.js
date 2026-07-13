@@ -82,27 +82,84 @@ function likelyInventoryColumn(headers) {
 }
 
 async function startCamera() {
-  stopCamera();
+  if (state.stream) {
+    stopCamera();
+    setStatus("Camara fechada");
+    return;
+  }
+
+  resetCameraElement();
   setStatus("A abrir camara");
+  els.startCamera.disabled = true;
 
   try {
-    state.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: state.facingMode },
-      audio: false,
-    });
+    state.stream = await openCameraStream();
     els.video.srcObject = state.stream;
+    await els.video.play().catch(() => {});
     els.capture.disabled = false;
+    els.startCamera.textContent = "Fechar camara";
     setStatus("Camara ativa");
   } catch (error) {
+    console.error(error);
+    resetCameraElement();
     setStatus("Sem acesso a camara");
-    alert("Nao foi possivel abrir a camara. Confirma as permissoes do browser.");
+    alert(cameraErrorMessage(error));
+  } finally {
+    els.startCamera.disabled = false;
   }
+}
+
+async function openCameraStream() {
+  const attempts = [
+    { video: { facingMode: { ideal: state.facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+    { video: { facingMode: state.facingMode }, audio: false },
+    { video: true, audio: false },
+  ];
+
+  let lastError;
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
 }
 
 function stopCamera() {
   if (!state.stream) return;
   state.stream.getTracks().forEach((track) => track.stop());
   state.stream = null;
+  resetCameraElement();
+}
+
+function resetCameraElement() {
+  els.video.pause();
+  els.video.srcObject = null;
+  els.capture.disabled = true;
+  els.startCamera.textContent = "Abrir camara";
+}
+
+function cameraErrorMessage(error) {
+  if (error?.name === "NotAllowedError") {
+    return "A camara esta bloqueada para este site. No browser, abre as permissoes do site e permite a camara.";
+  }
+
+  if (error?.name === "NotFoundError") {
+    return "Nao foi encontrada nenhuma camara neste dispositivo.";
+  }
+
+  if (error?.name === "NotReadableError") {
+    return "A camara pode estar a ser usada por outra app. Fecha outras apps com camara e tenta de novo.";
+  }
+
+  if (!window.isSecureContext) {
+    return "A camara precisa de HTTPS. Abre a versao publicada no GitHub Pages.";
+  }
+
+  return "Nao foi possivel abrir a camara. Recarrega a pagina e confirma as permissoes do browser.";
 }
 
 function captureToCanvas() {
@@ -546,6 +603,7 @@ function disableServerOnlyControls() {
 els.startCamera.addEventListener("click", startCamera);
 els.switchCamera.addEventListener("click", () => {
   state.facingMode = state.facingMode === "environment" ? "user" : "environment";
+  stopCamera();
   startCamera();
 });
 els.capture.addEventListener("click", () => runOcr(captureToCanvas()));
@@ -607,6 +665,11 @@ if (!navigator.mediaDevices?.getUserMedia) {
   els.capture.disabled = true;
   setStatus("Camara indisponivel");
 }
+
+window.addEventListener("pagehide", stopCamera);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopCamera();
+});
 
 loadSavedExcel().catch((error) => {
   console.error(error);
