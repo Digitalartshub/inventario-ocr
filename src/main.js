@@ -16,6 +16,10 @@ const els = {
   startCamera: document.querySelector("#start-camera"),
   switchCamera: document.querySelector("#switch-camera"),
   capture: document.querySelector("#capture"),
+  capturePreview: document.querySelector("#capture-preview"),
+  previewCanvas: document.querySelector("#preview-canvas"),
+  readPreview: document.querySelector("#read-preview"),
+  retakePreview: document.querySelector("#retake-preview"),
   imageInput: document.querySelector("#image-input"),
   excelInput: document.querySelector("#excel-input"),
   columnSelect: document.querySelector("#column-select"),
@@ -173,6 +177,36 @@ function captureToCanvas() {
   return canvas;
 }
 
+function captureGuideToPreview() {
+  const fullCanvas = captureToCanvas();
+  const guide = {
+    x: 0.1,
+    y: 0.36,
+    width: 0.8,
+    height: 0.28,
+  };
+  const sourceX = Math.round(fullCanvas.width * guide.x);
+  const sourceY = Math.round(fullCanvas.height * guide.y);
+  const sourceWidth = Math.round(fullCanvas.width * guide.width);
+  const sourceHeight = Math.round(fullCanvas.height * guide.height);
+  const scale = 2;
+
+  els.previewCanvas.width = sourceWidth * scale;
+  els.previewCanvas.height = sourceHeight * scale;
+  els.previewCanvas
+    .getContext("2d")
+    .drawImage(fullCanvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, els.previewCanvas.width, els.previewCanvas.height);
+
+  els.capturePreview.hidden = false;
+  setStatus("Imagem capturada");
+  return els.previewCanvas;
+}
+
+function clearPreview() {
+  els.capturePreview.hidden = true;
+  els.previewCanvas.getContext("2d").clearRect(0, 0, els.previewCanvas.width, els.previewCanvas.height);
+}
+
 async function runOcr(source) {
   setStatus("A ler texto");
   els.ocrProgress.hidden = false;
@@ -221,8 +255,8 @@ async function runOcr(source) {
 async function prepareOcrImages(source) {
   const base = await sourceToCanvas(source);
   const crops = [
-    { x: 0.07, y: 0.36, width: 0.86, height: 0.28 },
-    { x: 0.03, y: 0.30, width: 0.94, height: 0.40 },
+    { x: 0, y: 0, width: 1, height: 1 },
+    { x: 0.04, y: 0.12, width: 0.92, height: 0.76 },
   ];
 
   return crops.map((crop) => preprocessCrop(base, crop));
@@ -606,7 +640,11 @@ els.switchCamera.addEventListener("click", () => {
   stopCamera();
   startCamera();
 });
-els.capture.addEventListener("click", () => runOcr(captureToCanvas()));
+els.capture.addEventListener("click", () => captureGuideToPreview());
+els.readPreview.addEventListener("click", async () => {
+  await runOcr(els.previewCanvas);
+});
+els.retakePreview.addEventListener("click", clearPreview);
 els.search.addEventListener("click", () => searchInventory());
 els.inventoryInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") searchInventory();

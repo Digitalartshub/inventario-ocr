@@ -37,6 +37,18 @@
             <button id="capture" type="button" disabled>Capturar e ler</button>
           </div>
 
+          <div class="capture-preview" id="capture-preview" hidden>
+            <div class="preview-head">
+              <h2>Imagem capturada</h2>
+              <span>Confirma se o codigo esta legivel.</span>
+            </div>
+            <canvas id="preview-canvas"></canvas>
+            <div class="actions">
+              <button id="read-preview" type="button">Ler esta imagem</button>
+              <button id="retake-preview" class="secondary-button" type="button">Repetir</button>
+            </div>
+          </div>
+
           <label class="file-drop">
             <span>Ou escolher imagem</span>
             <input id="image-input" type="file" accept="image/*" capture="environment" />
