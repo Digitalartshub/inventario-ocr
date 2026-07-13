@@ -1,0 +1,23 @@
+{
+  "name": "inventario-ocr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "concurrently \"node server.js\" \"vite --host 0.0.0.0\"",
+    "dev:api": "node server.js",
+    "dev:web": "vite --host 0.0.0.0",
+    "start": "node server.js",
+    "tunnel": "npx -y cloudflared tunnel --url http://localhost:5173"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "express": "^4.21.2",
+    "multer": "^2.0.2",
+    "vite": "^6.0.7",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {}
+}

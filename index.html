@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inventario OCR</title>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="topbar">
+        <div>
+          <p class="eyebrow">Pesquisa de inventario</p>
+          <h1>Leitor OCR para Excel</h1>
+        </div>
+        <div class="status-pill" id="status-pill">Pronto</div>
+      </section>
+
+      <section class="layout">
+        <article class="panel camera-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Camara</h2>
+              <p>Aponta para a etiqueta e captura o numero.</p>
+            </div>
+            <button class="icon-button" id="switch-camera" type="button" title="Alternar camara">Trocar</button>
+          </div>
+
+          <div class="camera-frame">
+            <video id="camera" autoplay playsinline muted></video>
+            <div class="scan-guide"></div>
+            <canvas id="snapshot" hidden></canvas>
+          </div>
+
+          <div class="actions">
+            <button id="start-camera" type="button">Abrir camara</button>
+            <button id="capture" type="button" disabled>Capturar e ler</button>
+          </div>
+
+          <label class="file-drop">
+            <span>Ou escolher imagem</span>
+            <input id="image-input" type="file" accept="image/*" capture="environment" />
+          </label>
+
+          <div class="ocr-progress" id="ocr-progress" hidden>
+            <div class="progress-track">
+              <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <span id="progress-label">A preparar OCR...</span>
+          </div>
+        </article>
+
+        <article class="panel data-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Excel</h2>
+              <p>Adiciona Excels e escolhe a coluna unica de pesquisa.</p>
+            </div>
+          </div>
+
+          <label class="file-drop">
+            <span>Adicionar ou atualizar Excel no servidor</span>
+            <input id="excel-input" type="file" accept=".xlsx,.xls,.csv" />
+          </label>
+
+          <label class="field">
+            <span>Coluna do numero de inventario</span>
+            <select id="column-select" disabled>
+              <option value="">Carrega primeiro um Excel</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Numero reconhecido</span>
+            <div class="search-row">
+              <input id="inventory-input" type="text" placeholder="Ex.: AB1234" autocomplete="off" />
+              <button id="search" type="button">Procurar</button>
+            </div>
+          </label>
+
+          <p class="hint" id="sheet-info">Ainda nao ha dados carregados.</p>
+        </article>
+      </section>
+
+      <section class="results" id="results">
+        <div class="empty-state">
+          <h2>Resultado</h2>
+          <p>Quando encontrares um numero, a linha correspondente aparece aqui.</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
