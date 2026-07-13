@@ -19,6 +19,8 @@ const els = {
   capturePreview: document.querySelector("#capture-preview"),
   previewCanvas: document.querySelector("#preview-canvas"),
   readPreview: document.querySelector("#read-preview"),
+  rotatePreview: document.querySelector("#rotate-preview"),
+  rotatePreview180: document.querySelector("#rotate-preview-180"),
   retakePreview: document.querySelector("#retake-preview"),
   imageInput: document.querySelector("#image-input"),
   excelInput: document.querySelector("#excel-input"),
@@ -191,15 +193,56 @@ function captureGuideToPreview() {
   const sourceHeight = Math.round(fullCanvas.height * guide.height);
   const scale = 2;
 
-  els.previewCanvas.width = sourceWidth * scale;
-  els.previewCanvas.height = sourceHeight * scale;
-  els.previewCanvas
+  const cropCanvas = document.createElement("canvas");
+  cropCanvas.width = sourceWidth * scale;
+  cropCanvas.height = sourceHeight * scale;
+  cropCanvas
     .getContext("2d")
-    .drawImage(fullCanvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, els.previewCanvas.width, els.previewCanvas.height);
+    .drawImage(fullCanvas, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, cropCanvas.width, cropCanvas.height);
 
+  drawCanvasToPreview(cropCanvas);
   els.capturePreview.hidden = false;
   setStatus("Imagem capturada");
   return els.previewCanvas;
+}
+
+function drawCanvasToPreview(sourceCanvas) {
+  els.previewCanvas.width = sourceCanvas.width;
+  els.previewCanvas.height = sourceCanvas.height;
+  els.previewCanvas.getContext("2d").drawImage(sourceCanvas, 0, 0);
+}
+
+function drawImageToPreview(image) {
+  const maxSize = 1600;
+  const ratio = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+  canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+  drawCanvasToPreview(canvas);
+  els.capturePreview.hidden = false;
+  setStatus("Imagem escolhida");
+}
+
+function rotatePreview(degrees) {
+  if (els.capturePreview.hidden || !els.previewCanvas.width || !els.previewCanvas.height) return;
+
+  const source = document.createElement("canvas");
+  source.width = els.previewCanvas.width;
+  source.height = els.previewCanvas.height;
+  source.getContext("2d").drawImage(els.previewCanvas, 0, 0);
+
+  const turns = ((degrees % 360) + 360) % 360;
+  const rotated = document.createElement("canvas");
+  const swap = turns === 90 || turns === 270;
+  rotated.width = swap ? source.height : source.width;
+  rotated.height = swap ? source.width : source.height;
+
+  const context = rotated.getContext("2d");
+  context.translate(rotated.width / 2, rotated.height / 2);
+  context.rotate((turns * Math.PI) / 180);
+  context.drawImage(source, -source.width / 2, -source.height / 2);
+  drawCanvasToPreview(rotated);
 }
 
 function clearPreview() {
@@ -644,6 +687,8 @@ els.capture.addEventListener("click", () => captureGuideToPreview());
 els.readPreview.addEventListener("click", async () => {
   await runOcr(els.previewCanvas);
 });
+els.rotatePreview.addEventListener("click", () => rotatePreview(90));
+els.rotatePreview180.addEventListener("click", () => rotatePreview(180));
 els.retakePreview.addEventListener("click", clearPreview);
 els.search.addEventListener("click", () => searchInventory());
 els.inventoryInput.addEventListener("keydown", (event) => {
@@ -675,7 +720,7 @@ els.imageInput.addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
   if (!file) return;
   const image = await loadImageFile(file);
-  await runOcr(image);
+  drawImageToPreview(image);
 });
 els.results.addEventListener("click", (event) => {
   const button = event.target.closest("[data-inventory]");
