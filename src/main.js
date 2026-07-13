@@ -1,5 +1,3 @@
-import "./styles.css";
-
 const state = {
   stream: null,
   facingMode: "environment",
