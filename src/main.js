@@ -424,6 +424,7 @@ async function searchInventory() {
         <strong>Nao encontrado:</strong> ${escapeHtml(query)}
       </div>
       ${renderSuggestions(query, suggestions)}
+      ${renderCorrectionForm(query)}
     `;
     setStatus("Nao encontrado");
     return;
@@ -507,6 +508,20 @@ function renderMatch(row, excelRowNumber, query, suggestions = []) {
     </div>
     <div class="result-grid">${cells}</div>
     ${renderSuggestions(query, suggestions.filter((suggestion) => suggestion.value !== query).slice(0, 6))}
+    ${renderCorrectionForm(query)}
+  `;
+}
+
+function renderCorrectionForm(query) {
+  return `
+    <form class="correction-form" id="correction-form">
+      <h2>Corrigir leitura</h2>
+      <p>Se a leitura estiver errada, escreve o codigo correto e guarda neste telemovel.</p>
+      <div class="correction-row">
+        <input id="correction-input" type="text" value="${escapeHtml(query)}" autocomplete="off" />
+        <button type="submit">Guardar</button>
+      </div>
+    </form>
   `;
 }
 
@@ -572,6 +587,18 @@ els.results.addEventListener("click", (event) => {
 
   storeCorrection(state.lastRead || els.inventoryInput.value, button.dataset.inventory);
   els.inventoryInput.value = button.dataset.inventory;
+  searchInventory();
+});
+els.results.addEventListener("submit", (event) => {
+  if (event.target.id !== "correction-form") return;
+  event.preventDefault();
+
+  const input = event.target.querySelector("#correction-input");
+  const corrected = normalize(input?.value);
+  if (!corrected) return;
+
+  storeCorrection(state.lastRead || els.inventoryInput.value, corrected);
+  els.inventoryInput.value = corrected;
   searchInventory();
 });
 

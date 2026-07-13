@@ -348,6 +348,29 @@ select {
   font-weight: 600;
 }
 
+.correction-form {
+  background: #f7f4ee;
+  border: 1px solid #e4d5b7;
+  border-radius: 8px;
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.correction-form p {
+  color: #6a5a3d;
+  margin-bottom: 10px;
+}
+
+.correction-row {
+  display: flex;
+  gap: 10px;
+}
+
+.correction-row input {
+  background: #fff;
+  min-width: 0;
+}
+
 @media (max-width: 820px) {
   .app-shell {
     width: min(100% - 20px, 680px);
@@ -365,7 +388,8 @@ select {
   }
 
   .actions,
-  .search-row {
+  .search-row,
+  .correction-row {
     flex-direction: column;
   }
 }
