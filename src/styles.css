@@ -312,6 +312,42 @@ select {
   padding: 14px;
 }
 
+.suggestions {
+  margin-top: 14px;
+}
+
+.suggestions h2 {
+  margin-bottom: 4px;
+}
+
+.suggestions p {
+  color: #5c6875;
+  margin-bottom: 10px;
+}
+
+.suggestion-list {
+  display: grid;
+  gap: 8px;
+}
+
+.suggestion-button {
+  align-items: flex-start;
+  background: #eef6f3;
+  border: 1px solid #bdd8d0;
+  color: #173f39;
+  display: grid;
+  gap: 3px;
+  min-height: 54px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.suggestion-button span {
+  color: #4f665f;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
 @media (max-width: 820px) {
   .app-shell {
     width: min(100% - 20px, 680px);

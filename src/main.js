@@ -194,33 +194,44 @@ function chooseBestInventoryText(text) {
 
   const joined = normalize(text);
   const candidates = [...new Set([...rawCandidates, joined])];
-  const databaseMatch = findClosestInventory(candidates);
-  if (databaseMatch) return { value: databaseMatch, fromDatabase: true };
+  const suggestions = findInventorySuggestions(candidates);
+  const best = suggestions[0];
 
-  return { value: candidates.sort((a, b) => b.length - a.length)[0] ?? "", fromDatabase: false };
+  if (best && (best.score >= 0.62 || (best.score >= 0.54 && candidates.some((candidate) => /\d/.test(candidate))))) {
+    return { value: best.value, fromDatabase: true, suggestions };
+  }
+
+  return { value: candidates.sort((a, b) => b.length - a.length)[0] ?? "", fromDatabase: false, suggestions };
 }
 
-function findClosestInventory(candidates) {
-  if (!state.rows.length || !state.selectedColumn) return "";
+function findInventorySuggestions(candidates, limit = 5) {
+  if (!state.rows.length || !state.selectedColumn) return [];
 
   const candidateValues = candidates.map(compactCode).filter((value) => value.length >= 3);
-  if (!candidateValues.length) return "";
+  if (!candidateValues.length) return [];
 
-  let best = { score: 0, value: "" };
+  const byValue = new Map();
   for (const row of state.rows) {
     const inventory = normalize(row[state.selectedColumn]);
     const inventoryCompact = compactCode(inventory);
     if (!inventoryCompact) continue;
 
+    let bestScore = 0;
     for (const candidate of candidateValues) {
       const score = similarityScore(candidate, inventoryCompact);
-      if (score > best.score) {
-        best = { score, value: inventory };
-      }
+      if (score > bestScore) bestScore = score;
+    }
+
+    const previous = byValue.get(inventory);
+    if (!previous || bestScore > previous.score) {
+      byValue.set(inventory, { value: inventory, score: bestScore, row });
     }
   }
 
-  return best.score >= 0.58 ? best.value : "";
+  return [...byValue.values()]
+    .filter((suggestion) => suggestion.score >= 0.42)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
 }
 
 function similarityScore(candidate, inventory) {
@@ -233,7 +244,9 @@ function similarityScore(candidate, inventory) {
   const base = maxLength ? 1 - distance / maxLength : 0;
 
   const shared = [...candidate].filter((char) => inventory.includes(char)).length / Math.max(candidate.length, 1);
-  return base * 0.75 + shared * 0.25;
+  const candidateNumbers = candidate.match(/\d+/g) ?? [];
+  const numericBonus = candidateNumbers.some((number) => inventory.includes(number)) ? 0.12 : 0;
+  return Math.min(1, base * 0.72 + shared * 0.2 + numericBonus);
 }
 
 function levenshtein(a, b) {
@@ -369,10 +382,12 @@ async function searchInventory() {
   }
 
   if (!result.found) {
+    const suggestions = findInventorySuggestions([query]);
     els.results.innerHTML = `
       <div class="not-found">
         <strong>Nao encontrado:</strong> ${escapeHtml(query)}
       </div>
+      ${renderSuggestions(query, suggestions)}
     `;
     setStatus("Nao encontrado");
     return;
@@ -380,6 +395,31 @@ async function searchInventory() {
 
   renderMatch(result.row, result.excelRowNumber, query);
   setStatus("Encontrado");
+}
+
+function renderSuggestions(query, suggestions) {
+  if (!suggestions.length) return "";
+
+  const buttons = suggestions
+    .map((suggestion) => {
+      const label = suggestion.value;
+      const detail = suggestion.row?.Identificação || suggestion.row?.Folha || "";
+      return `
+        <button class="suggestion-button" type="button" data-inventory="${escapeHtml(label)}">
+          <strong>${escapeHtml(label)}</strong>
+          <span>${escapeHtml(detail)}</span>
+        </button>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="suggestions">
+      <h2>Sugestoes parecidas</h2>
+      <p>Leitura usada: ${escapeHtml(query)}</p>
+      <div class="suggestion-list">${buttons}</div>
+    </div>
+  `;
 }
 
 async function searchOnServer(query) {
@@ -482,6 +522,13 @@ els.imageInput.addEventListener("change", async (event) => {
   if (!file) return;
   const image = await loadImageFile(file);
   await runOcr(image);
+});
+els.results.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-inventory]");
+  if (!button) return;
+
+  els.inventoryInput.value = button.dataset.inventory;
+  searchInventory();
 });
 
 if (!navigator.mediaDevices?.getUserMedia) {
